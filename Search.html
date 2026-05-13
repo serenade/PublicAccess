@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🗺智能搜索</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .search-box {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 25px;
+            outline: none;
+            margin-bottom: 20px;
+        }
+        .search-box:focus {
+            border-color: #4285f4;
+        }
+        .search-btn {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 14px;
+            border-radius: 25px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s;
+        }
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+            font-weight: bold;
+        }
+        .loading {
+            color: #4285f4;
+            background: #f0f7ff;
+        }
+        .error {
+            color: #d93025;
+            background: #fce8e6;
+        }
+        .success {
+            color: #188038;
+            background: #e6f4ea;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .engine-name {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 智能搜索</h1>
+    <p>自动按优先级选择可用搜索引擎，或点击下方按钮直接使用特定引擎</p>
+    
+    <form id="searchForm">
+        <input type="text" 
+               class="search-box" 
+               name="q" 
+               id="searchInput" 
+               placeholder="输入搜索内容..."
+               autocomplete="off"
+               required>
+        <br>
+        <div class="btn-group">
+            <button type="submit" class="search-btn" style="background: linear-gradient(45deg, #4285f4, #34a853, #fbbc05, #ea4335);">
+                智能搜索
+				<br><span class="engine-name">🌍🌎🌏🕵</span>
+            </button>
+            <!-- 动态生成所有搜索引擎按钮 -->
+            <div id="engineButtons"></div>
+        </div>
+    </form>
+    
+    <div id="status" class="status"></div>
+
+    <script type="text/javascript">
+        // 将配置直接嵌入到脚本中，避免作用域问题
+        var scriptContent = `
+            // 搜索引擎检测优先级（按数组顺序从高到低）
+            const ENGINE_ORDER = ['google', 'bing', 'yandex', 'baidu'];
+            
+            // 搜索引擎详细配置
+            const ENGINES_CONFIG = {
+                google: {
+                    name: 'Google',
+					localName: '谷歌',
+                    checkUrl: 'https://www.google.com/favicon.ico',
+                    searchUrl: 'https://www.google.com/search?q=__QUERY__',
+                    color: '#4285f4'
+                },
+                bing: {
+                    name: 'Bing',
+					localName: '必应',
+                    checkUrl: 'https://cn.bing.com/favicon.ico',
+                    searchUrl: 'https://cn.bing.com/search?ensearch=1&q=__QUERY__',
+                    color: '#2932e1'
+                },
+                yandex: {
+                    name: 'Yandex',
+					localName: 'Яндекс',
+                    checkUrl: 'https://yandex.com/favicon.ico',
+                    searchUrl: 'https://yandex.com/search/?text=__QUERY__',
+                    color: '#ff0000'
+                },
+                baidu: {
+                    name: 'Baidu',
+					localName: '百度',
+                    checkUrl: 'https://www.baidu.com/favicon.ico',
+                    searchUrl: 'https://www.baidu.com/s?wd=__QUERY__',
+                    color: '#00809d'
+                }
+            };
+            
+            // 获取URL参数
+            function getQueryParam(name) {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get(name);
+            }
+            
+            // 显示状态消息
+            function showStatus(message, type) {
+                const statusDiv = document.getElementById('status');
+                statusDiv.textContent = message;
+                statusDiv.className = 'status ' + type;
+                statusDiv.style.display = 'block';
+            }
+            
+            // 隐藏状态消息
+            function hideStatus() {
+                document.getElementById('status').style.display = 'none';
+            }
+            
+            // 通用搜索引擎可用性检测（避免CORS问题）
+            function checkEngine(checkUrl) {
+                return new Promise(function(resolve) {
+                    const timeout = 3000;
+                    const img = new Image();
+                    
+                    img.onload = function() { resolve(true); };
+                    img.onerror = function() { resolve(false); };
+                    setTimeout(function() { resolve(false); }, timeout);
+                    
+                    img.src = checkUrl + '?t=' + Date.now();
+                });
+            }
+            
+            // 使用指定搜索引擎搜索
+            function searchWithEngine(engineKey, query) {
+                if (!query || !query.trim()) {
+                    showStatus('请输入搜索内容', 'error');
+                    return;
+                }
+                
+                const engine = ENGINES_CONFIG[engineKey];
+                if (!engine) {
+                    showStatus('未知的搜索引擎', 'error');
+                    return;
+                }
+                
+                showStatus('正在跳转到 ' + engine.name + '...', 'success');
+                setTimeout(function() {
+                    window.location.href = engine.searchUrl.replace('__QUERY__', encodeURIComponent(query));
+                }, 500);
+            }
+            
+            // 按自定义顺序执行搜索
+            async function performSearch(query) {
+                if (!query || !query.trim()) {
+                    showStatus('请输入搜索内容', 'error');
+                    return;
+                }
+                
+                showStatus('正在检测搜索引擎...', 'loading');
+                
+                // 按ENGINE_ORDER顺序逐个检测
+                for (const engineKey of ENGINE_ORDER) {
+                    const engine = ENGINES_CONFIG[engineKey];
+                    if (!engine) continue;
+                    
+                    showStatus('检测 ' + engine.name + ' 可用性...', 'loading');
+                    try {
+                        const isAvailable = await checkEngine(engine.checkUrl);
+                        if (isAvailable) {
+                            showStatus(engine.name + ' 可用，正在跳转...', 'success');
+                            setTimeout(function() {
+                                window.location.href = engine.searchUrl.replace('__QUERY__', encodeURIComponent(query));
+                            }, 500);
+                            return;
+                        }
+                    } catch (e) {
+                        // 跳过异常引擎，继续检测下一个
+                    }
+                }
+                
+                // 所有引擎均不可用，fallback到第一个引擎
+                const fallbackEngine = ENGINE_ORDER[0];
+                showStatus('所有搜索引擎均不可用，使用 ' + ENGINES_CONFIG[fallbackEngine].name + '...', 'loading');
+                setTimeout(function() {
+                    window.location.href = ENGINES_CONFIG[fallbackEngine].searchUrl.replace('__QUERY__', encodeURIComponent(query));
+                }, 500);
+            }
+            
+            // 生成所有搜索引擎按钮（基于ENGINES_CONFIG）
+            function generateAllEngineButtons() {
+                const container = document.getElementById('engineButtons');
+                container.innerHTML = '';
+                
+                // 遍历ENGINES_CONFIG中的所有引擎
+                Object.keys(ENGINES_CONFIG).forEach(function(key) {
+                    const engine = ENGINES_CONFIG[key];
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'search-btn';
+					//key.toUpperCase() 
+                    button.innerHTML = engine.name + '<br><span class="engine-name">' + engine.localName + '</span>';
+                    button.style.background = engine.color;
+                    button.onclick = function() {
+                        const query = document.getElementById('searchInput').value;
+                        searchWithEngine(key, query);
+                    };
+                    container.appendChild(button);
+                });
+            }
+            
+            // 页面初始化
+            window.onload = function() {
+                // 生成所有搜索引擎按钮
+                generateAllEngineButtons();
+                
+                const query = getQueryParam('q');
+                if (query) {
+                    performSearch(query);
+                } else {
+                    hideStatus();
+                }
+                
+                document.getElementById('searchForm').addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const query = document.getElementById('searchInput').value;
+                    performSearch(query);
+                });
+            };
+        `;
+        
+        // 使用Function构造函数执行脚本
+        new Function(scriptContent)();
+    </script>
+</body>
+</html>
